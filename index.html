@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14161c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ふたつ字幕">
+<title>ふたつ字幕</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: sticky player on top, subtitle "screen" panel beneath, scrolling transcript below — one column, thumb-reachable controls */
+:root{
+  --bg:#f3f4f6; --surface:#ffffff; --fg:#16181d; --muted:#626977; --line:#dfe2e8;
+  --sub:#e8b400;           /* classic subtitle yellow */
+  --sub-ink:#16181d;
+  --accent:#2f5bd3; --accent-soft:#e3eafb;
+  --screen:#111318; --screen-fg:#f6f6f2; --screen-ja:#ffd84a;
+  --f-en:"Literata",Georgia,"Times New Roman",serif;
+  --f-ja:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1115; --surface:#181b22; --fg:#eceef2; --muted:#9aa1ae; --line:#2a2f3a;
+  --accent:#7d9cf0; --accent-soft:#222c45; --screen:#000; --screen-fg:#f6f6f2; --screen-ja:#ffd84a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --surface:#181b22; --fg:#eceef2; --muted:#9aa1ae; --line:#2a2f3a;
+  --accent:#7d9cf0; --accent-soft:#222c45; --screen:#000; --screen-fg:#f6f6f2; --screen-ja:#ffd84a; color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--f-ja);-webkit-text-size-adjust:100%;
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.wrap{max-width:720px;margin:0 auto;padding-inline:16px}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;max-width:720px;margin:0 auto}
+.brand{display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:18px;letter-spacing:.02em}
+.brand .mark{display:inline-flex;flex-direction:column;gap:2px;transform:translateY(-2px)}
+.brand .mark i{display:block;height:3px;border-radius:2px;background:var(--fg);width:18px}
+.brand .mark i+i{background:var(--sub);width:13px}
+.ghost{background:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:13px}
+
+/* ---------- setup ---------- */
+.setup{padding-block:8px 48px;display:grid;gap:20px}
+.lead h1{font-size:22px;line-height:1.4;margin:6px 0 4px;text-wrap:balance}
+.lead p{margin:0;color:var(--muted);font-size:14px}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:10px}
+.step h2{margin:0;font-size:15px;display:flex;gap:10px;align-items:center}
+.step h2 .n{font-family:var(--f-mono);font-size:12px;background:var(--fg);color:var(--bg);border-radius:6px;padding:1px 7px}
+.field{display:flex;gap:8px}
+.field input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:11px 12px;font-size:16px}
+.btn{border:0;border-radius:10px;padding:11px 16px;background:var(--fg);color:var(--bg);font-weight:700;white-space:nowrap}
+.btn.secondary{background:var(--accent-soft);color:var(--accent)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.hint{font-size:13px;color:var(--muted);margin:0}
+.slots{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.slot{border:1px dashed var(--line);border-radius:10px;padding:10px;font-size:13px;min-width:0}
+.slot b{display:block;font-size:12px;color:var(--muted);font-weight:500}
+.slot span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot.ok{border-style:solid;border-color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+details.paste summary{font-size:13px;color:var(--accent);cursor:pointer}
+details.paste textarea{width:100%;min-height:120px;margin-top:8px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:10px;font:13px/1.5 var(--f-mono)}
+.err{color:#c23b3b;font-size:13px;margin:0}
+.howto ol{margin:0;padding-left:1.3em;font-size:14px;display:grid;gap:4px}
+.howto code{font-family:var(--f-mono);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.lib{display:grid;gap:8px}
+.lib-item{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px;text-align:left;width:100%}
+.lib-item img{width:96px;aspect-ratio:16/9;object-fit:cover;border-radius:8px;flex:none;background:var(--line)}
+.lib-item .t{min-width:0;flex:1}
+.lib-item .t b{display:block;font-size:14px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lib-item .t small{color:var(--muted);font-size:12px}
+.lib-del{white-space:nowrap;background:none;border:0;color:var(--muted);font-size:12px;padding:6px}
+
+/* ---------- watch ---------- */
+.stage{position:sticky;top:0;z-index:5;background:var(--screen);padding-top:env(safe-area-inset-top,0px)}
+.player-box{max-width:720px;margin:0 auto;aspect-ratio:16/9;max-width:min(720px,100%)}
+.player-box iframe,#player{width:100%;height:100%;display:block;border:0}
+.screen{max-width:720px;margin:0 auto;padding:12px 16px 14px;color:var(--screen-fg);min-height:118px;display:grid;gap:6px;align-content:start}
+.cap-en{font-family:var(--f-en);font-size:19px;line-height:1.45;font-weight:400;min-height:1.45em}
+.cap-en .w{border-radius:3px;cursor:pointer}
+.cap-en .w:active{background:rgba(255,255,255,.18)}
+.cap-ja{font-family:var(--f-ja);font-size:15px;line-height:1.6;color:var(--screen-ja);min-height:1.6em;transition:filter .2s}
+.cap-ja.veil{filter:blur(7px);cursor:pointer;user-select:none}
+.cap-en.veil{filter:blur(7px);cursor:pointer;user-select:none}
+.cap-empty{color:#7c8290;font-size:13px}
+.player-msg{max-width:720px;margin:0 auto;background:#5a1f1f;color:#fff;font-size:13px;line-height:1.5;padding:10px 16px}
+.file-warn{background:#fdecc8;color:#5a3d00;border-radius:12px;padding:12px 14px;font-size:14px;margin:0}
+.controls{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:0 12px 12px}
+.ctl{background:#232731;color:#eef0f4;border:0;border-radius:10px;padding:8px 4px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;line-height:1.2}
+.ctl svg{width:20px;height:20px}
+.ctl.on{background:var(--screen-ja);color:#16181d}
+.subbar{max-width:720px;margin:0 auto;display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 12px;align-items:center}
+.chip{background:transparent;color:#c9cdd6;border:1px solid #3a404d;border-radius:999px;padding:4px 10px;font-size:12px}
+.chip.on{border-color:var(--screen-ja);color:var(--screen-ja)}
+.chip.mono{font-family:var(--f-mono)}
+.sync{display:flex;align-items:center;gap:4px;margin-left:auto;color:#c9cdd6;font-size:12px}
+.sync output{font-family:var(--f-mono);min-width:3.6em;text-align:center;font-variant-numeric:tabular-nums}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-top:6px;position:sticky;z-index:4;background:var(--bg)}
+.tab{background:none;border:0;padding:12px 12px 10px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab[aria-selected="true"]{color:var(--fg);border-color:var(--fg)}
+.tab .count{font-family:var(--f-mono);font-size:11px;font-weight:500;margin-left:4px}
+.list{list-style:none;margin:0;padding:6px 0 80px}
+.cue{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;padding:10px 6px;border-radius:10px;cursor:pointer;align-items:start}
+.cue + .cue{border-top:1px solid var(--line)}
+.cue .ts{font-family:var(--f-mono);font-size:11px;color:var(--muted);padding-top:4px;font-variant-numeric:tabular-nums}
+.cue .en{font-family:var(--f-en);font-size:16px;line-height:1.45}
+.cue .ja{grid-column:2;font-size:13px;color:var(--muted);line-height:1.55}
+.cue.now{background:var(--accent-soft)}
+.cue.now .ts{color:var(--accent)}
+.star{grid-row:1/span 2;grid-column:3;background:none;border:0;padding:4px;color:var(--muted)}
+.star svg{width:18px;height:18px}
+.star.on{color:var(--sub)}
+.hide-ja .cue .ja{color:transparent;text-shadow:0 0 8px var(--muted)}
+.empty{color:var(--muted);font-size:14px;padding:28px 6px;text-align:center}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:13px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+
+/* word lookup sheet */
+.sheet{position:fixed;inset:auto 0 0 0;z-index:30;background:var(--surface);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 30px rgba(0,0,0,.25);max-width:720px;margin:0 auto}
+.sheet h3{margin:0 0 8px;font-family:var(--f-en);font-size:22px;font-weight:600}
+.sheet .row a{flex:1;text-align:center;text-decoration:none;border-radius:10px;padding:10px;background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:14px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+@media (min-width:600px){.cap-en{font-size:22px}.cap-ja{font-size:17px}}
+</style>
+</head>
+<body>
+
+<header class="top" id="topbar">
+  <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i></span>ふたつ字幕</div>
+  <button class="ghost" id="backBtn" hidden>動画を変える</button>
+</header>
+
+<!-- ================= SETUP ================= -->
+<main id="setup" class="wrap setup">
+  <p class="file-warn" id="fileWarn" hidden>いまファイルを直接開いているため、YouTubeの動画は再生できません。Netlify DropかGitHub Pagesに置いて、そのURLから開いてください。</p>
+  <div class="lead">
+    <h1>YouTubeを英語と日本語、<br>ふたつの字幕で。</h1>
+    <p>字幕は1文ずつ戻る・リピート・日本語を隠して答え合わせができます。</p>
+  </div>
+
+  <section class="step">
+    <h2><span class="n">1</span>動画のURL</h2>
+    <div class="field">
+      <input id="url" type="url" inputmode="url" placeholder="https://youtu.be/…" autocomplete="off">
+    </div>
+    <p class="hint">YouTubeアプリの「共有」→「コピー」で取れるURLをそのまま貼れます。</p>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">2</span>字幕ファイル（英語・日本語）</h2>
+    <div class="row">
+      <label class="btn secondary" for="files" style="cursor:pointer">ファイルを選ぶ</label>
+      <input id="files" type="file" multiple hidden>
+      <button class="ghost" id="swapBtn" type="button">英日を入れ替え</button>
+    </div>
+    <div class="slots">
+      <div class="slot" id="slotEn"><b>英語</b><span>未選択</span></div>
+      <div class="slot" id="slotJa"><b>日本語</b><span>未選択</span></div>
+    </div>
+    <p class="hint">.srt / .vtt に対応。2つまとめて選ぶと、英語と日本語を自動で振り分けます。日本語字幕がなくても使えます。</p>
+    <details class="paste">
+      <summary>ファイルではなくテキストを貼り付ける</summary>
+      <textarea id="pasteBox" placeholder="SRTやVTTの中身をそのまま貼り付け"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="ghost" type="button" data-paste="en">英語として読み込む</button>
+        <button class="ghost" type="button" data-paste="ja">日本語として読み込む</button>
+      </div>
+    </details>
+    <p class="err" id="setupErr" hidden></p>
+    <button class="btn" id="startBtn" type="button" disabled>この動画で始める</button>
+  </section>
+
+  <section class="step howto">
+    <h2>字幕ファイルの用意のしかた</h2>
+    <ol>
+      <li>スマホのブラウザで <a href="https://notegpt.io/ja/youtube-subtitle-downloader" target="_blank" rel="noopener">NoteGPT 字幕ダウンローダー</a> を開く（登録不要・無料）</li>
+      <li>YouTubeのURLを貼って、字幕を生成する</li>
+      <li>言語「英語」・形式「SRT」を選んで保存</li>
+      <li>同じ動画で、言語「日本語」・形式「SRT」を選んで保存</li>
+      <li>このページの「ファイルを選ぶ」で2つを選択</li>
+    </ol>
+    <p class="hint">日本語が選べない動画は、<code>downsub.com</code>（英語のサイト）の翻訳機能で日本語字幕を作れます。英語は自動生成より、手動で付けられた字幕の方が文の区切りがきれいです。</p>
+  </section>
+
+  <section id="libWrap" hidden>
+    <h2 style="font-size:15px;margin:4px 0 10px">最近見た動画</h2>
+    <div class="lib" id="lib"></div>
+  </section>
+</main>
+
+<!-- ================= WATCH ================= -->
+<div id="watch" hidden>
+  <div class="stage" id="stage">
+    <div class="player-box"><div id="player"></div></div>
+    <p class="player-msg" id="playerMsg" role="alert" hidden></p>
+    <div class="screen" aria-live="polite">
+      <div class="cap-en" id="capEn"></div>
+      <div class="cap-ja" id="capJa"></div>
+    </div>
+    <div class="controls">
+      <button class="ctl" id="prevBtn" aria-label="前の文"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5v14"/><path d="M18 6l-9 6 9 6z"/></svg>前の文</button>
+      <button class="ctl" id="playBtn" aria-label="再生"><svg viewBox="0 0 24 24" fill="currentColor" id="playIcon"><path d="M7 5l12 7-12 7z"/></svg><span id="playLbl">再生</span></button>
+      <button class="ctl" id="nextBtn" aria-label="次の文"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 5v14"/><path d="M6 6l9 6-9 6z"/></svg>次の文</button>
+      <button class="ctl" id="loopBtn" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>リピート</button>
+      <button class="ctl" id="saveBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>保存</button>
+    </div>
+    <div class="subbar">
+      <button class="chip" id="stopEachBtn" aria-pressed="false">1文ごとに止める</button>
+      <button class="chip" id="hideJaBtn" aria-pressed="false">日本語を隠す</button>
+      <button class="chip" id="hideEnBtn" aria-pressed="false">英語を隠す</button>
+      <button class="chip mono" id="rateBtn">1.0×</button>
+      <span class="sync" title="字幕のタイミング調整">ずれ
+        <button class="chip mono" id="offMinus" aria-label="字幕を遅らせる">−</button>
+        <output id="offOut">0.0s</output>
+        <button class="chip mono" id="offPlus" aria-label="字幕を早める">＋</button>
+      </span>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="tabs" id="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="all">全文<span class="count" id="cntAll"></span></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="saved">保存したフレーズ<span class="count" id="cntSaved"></span></button>
+    </div>
+    <ol class="list" id="list"></ol>
+  </div>
+</div>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-label="単語">
+  <h3 id="sheetWord"></h3>
+  <div class="row">
+    <a id="lkWeblio" target="_blank" rel="noopener">Weblioで調べる</a>
+    <a id="lkEijiro" target="_blank" rel="noopener">英辞郎で調べる</a>
+  </div>
+  <div class="row" style="margin-top:8px"><button class="ghost" id="sheetClose" style="flex:1">閉じる</button></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+const KEY = 'futatsu-jimaku:v1';
+
+/* ---------- storage ---------- */
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || {videos:{},saved:[]}; }catch(e){ return {videos:{},saved:[]}; } }
+function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){ toast('保存領域がいっぱいです。古い動画を削除してください'); } }
+const store = load(); store.videos ||= {}; store.saved ||= [];
+
+/* ---------- subtitle parsing ---------- */
+function toSec(s){
+  const m = s.trim().match(/(?:(\d+):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,3}))?/);
+  if(!m) return NaN;
+  return (+(m[1]||0))*3600 + (+m[2])*60 + (+m[3]) + (+((m[4]||'0').padEnd(3,'0')))/1000;
+}
+function clean(t){
+  return t.replace(/<[^>]+>/g,'').replace(/\{\\[^}]*\}/g,'')
+    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;|&apos;/g,"'").replace(/&quot;/g,'"').replace(/&nbsp;/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+function parseSubs(raw){
+  const text = raw.replace(/^﻿/,'').replace(/\r\n?/g,'\n');
+  const blocks = text.split(/\n\s*\n/);
+  let cues = [];
+  for(const b of blocks){
+    const lines = b.split('\n');
+    const i = lines.findIndex(l => l.includes('-->'));
+    if(i < 0) continue;
+    const [a, z] = lines[i].split('-->');
+    const start = toSec(a), end = toSec(z);
+    if(isNaN(start) || isNaN(end)) continue;
+    const body = clean(lines.slice(i+1).join(' '));
+    if(!body) continue;
+    cues.push({s:start, e:Math.max(end, start+0.3), t:body});
+  }
+  cues.sort((x,y) => x.s - y.s);
+  // YouTube auto-captions (rolling): drop repeats and strip the carried-over previous line
+  const out = [];
+  for(const c of cues){
+    const prev = out[out.length-1];
+    if(prev && c.t === prev.t){ prev.e = Math.max(prev.e, c.e); continue; }
+    if(prev && c.t.startsWith(prev.t + ' ') && c.s - prev.s < 8){
+      const rest = c.t.slice(prev.t.length).trim();
+      if(rest){ out.push({s:c.s, e:c.e, t:rest}); prev.e = Math.min(prev.e, c.s); }
+      continue;
+    }
+    if(prev && prev.e > c.s && prev.e - c.s < 0.25) prev.e = c.s;
+    out.push(c);
+  }
+  return out.map(c => ({s:+c.s.toFixed(3), e:+c.e.toFixed(3), t:c.t}));
+}
+const isJa = (txt) => {
+  const sample = txt.slice(0, 4000);
+  const ja = (sample.match(/[぀-ヿ一-鿿]/g) || []).length;
+  return ja > 20;
+};
+
+/* ---------- pair JA with EN ---------- */
+function pair(en, ja){
+  if(!ja || !ja.length) return en.map(() => '');
+  let j = 0;
+  return en.map(c => {
+    while(j < ja.length && ja[j].e <= c.s) j++;
+    let best = '', bestOv = 0;
+    for(let k = Math.max(0, j-1); k < ja.length && ja[k].s < c.e; k++){
+      const ov = Math.min(c.e, ja[k].e) - Math.max(c.s, ja[k].s);
+      if(ov > bestOv){ bestOv = ov; best = ja[k].t; }
+    }
+    return best;
+  });
+}
+function findIdx(cues, t){
+  let lo = 0, hi = cues.length - 1, ans = -1;
+  while(lo <= hi){ const m = (lo+hi) >> 1; if(cues[m].s <= t){ ans = m; lo = m+1; } else hi = m-1; }
+  return ans;
+}
+
+/* ---------- utils ---------- */
+function videoId(u){
+  u = (u||'').trim();
+  if(/^[\w-]{11}$/.test(u)) return u;
+  const m = u.match(/(?:youtu\.be\/|v=|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+const fmt = (s) => { s = Math.max(0, Math.floor(s)); const m = Math.floor(s/60), r = s%60; return m + ':' + String(r).padStart(2,'0'); };
+let toastTimer;
+function toast(msg){ const el = $('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 1800); }
+const esc = (s) => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ================= SETUP ================= */
+const draft = {en:null, ja:null, enName:'', jaName:''};
+function renderSlots(){
+  for(const k of ['en','ja']){
+    const el = $(k === 'en' ? 'slotEn' : 'slotJa');
+    const cues = draft[k];
+    el.classList.toggle('ok', !!cues);
+    el.querySelector('span').textContent = cues ? `${draft[k+'Name']}（${cues.length}行）` : '未選択';
+  }
+  updateStart();
+}
+function updateStart(){
+  const id = videoId($('url').value);
+  $('startBtn').disabled = !(id && (draft.en || store.videos[id]));
+  $('startBtn').textContent = (id && !draft.en && store.videos[id]) ? '保存済みの字幕で始める' : 'この動画で始める';
+}
+function showErr(m){ const e = $('setupErr'); e.textContent = m; e.hidden = !m; }
+
+$('url').addEventListener('input', updateStart);
+$('files').addEventListener('change', async (ev) => {
+  showErr('');
+  const files = [...ev.target.files].slice(0, 2);
+  for(const f of files){
+    const txt = await f.text();
+    const cues = parseSubs(txt);
+    if(!cues.length){ showErr(`${f.name} から字幕を読み取れませんでした。SRTかVTTか確認してください。`); continue; }
+    let lang = isJa(txt) ? 'ja' : 'en';
+    if(files.length === 1 && lang === 'en' && draft.en && !draft.ja) lang = 'en';
+    draft[lang] = cues; draft[lang+'Name'] = f.name;
+  }
+  ev.target.value = '';
+  renderSlots();
+});
+$('swapBtn').addEventListener('click', () => {
+  [draft.en, draft.ja] = [draft.ja, draft.en];
+  [draft.enName, draft.jaName] = [draft.jaName, draft.enName];
+  renderSlots();
+});
+document.querySelectorAll('[data-paste]').forEach(b => b.addEventListener('click', () => {
+  const cues = parseSubs($('pasteBox').value);
+  if(!cues.length){ showErr('貼り付けた内容から字幕を読み取れませんでした。時刻（00:00:01,000 --> …）を含めて貼ってください。'); return; }
+  showErr('');
+  draft[b.dataset.paste] = cues; draft[b.dataset.paste+'Name'] = '貼り付け';
+  $('pasteBox').value = ''; renderSlots();
+}));
+$('startBtn').addEventListener('click', () => {
+  const id = videoId($('url').value);
+  if(!id){ showErr('YouTubeのURLを確認してください。'); return; }
+  const prev = store.videos[id];
+  if(draft.en){
+    store.videos[id] = {title: prev?.title || '', en: draft.en, ja: draft.ja || prev?.ja || [], offset: prev?.offset || 0, pos: prev?.pos || 0, updated: Date.now()};
+  }
+  persist();
+  draft.en = draft.ja = null; renderSlots();
+  openVideo(id);
+});
+
+function renderLib(){
+  const ids = Object.keys(store.videos).sort((a,b) => store.videos[b].updated - store.videos[a].updated);
+  $('libWrap').hidden = !ids.length;
+  $('lib').innerHTML = ids.map(id => {
+    const v = store.videos[id];
+    return `<div style="display:flex;gap:4px;align-items:center">
+      <button class="lib-item" data-open="${id}">
+        <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy">
+        <span class="t"><b>${esc(v.title || id)}</b><small>${v.en.length}行${v.ja && v.ja.length ? '・日本語あり' : '・英語のみ'}・${fmt(v.pos||0)}まで視聴</small></span>
+      </button>
+      <button class="lib-del" data-del="${id}" aria-label="削除">削除</button></div>`;
+  }).join('');
+}
+$('lib').addEventListener('click', (e) => {
+  const o = e.target.closest('[data-open]'); const d = e.target.closest('[data-del]');
+  if(o) openVideo(o.dataset.open);
+  if(d){
+    if(d.dataset.armed){ delete store.videos[d.dataset.del]; persist(); renderLib(); }
+    else { d.dataset.armed = '1'; d.textContent = 'もう一度で削除'; setTimeout(() => { if(d.isConnected){ delete d.dataset.armed; d.textContent = '削除'; } }, 2500); }
+  }
+});
+
+/* ================= WATCH ================= */
+let player = null, apiReady = false, pendingId = null;
+let cur = null;   // {id, v, jaPair}
+const st = {loop:false, stopEach:false, hideJa:false, hideEn:false, rate:1, idx:-1, lastStopIdx:-1, tab:'all', revealJa:false, revealEn:false};
+const RATES = [0.5, 0.75, 0.9, 1, 1.25];
+
+window.onYouTubeIframeAPIReady = () => { apiReady = true; if(pendingId) createPlayer(pendingId); };
+(function loadApi(){ const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s); })();
+
+function openVideo(id){
+  const v = store.videos[id];
+  if(!v){ toast('字幕が見つかりません'); return; }
+  cur = {id, v, jaPair: pair(v.en, v.ja)};
+  v.updated = Date.now(); persist();
+  st.idx = -1; st.lastStopIdx = -1;
+  $('playerMsg').hidden = true;
+  $('setup').hidden = true; $('topbar').hidden = true; $('watch').hidden = false;
+  $('offOut').textContent = (v.offset >= 0 ? '+' : '') + v.offset.toFixed(1) + 's';
+  renderList(); renderCaption(-1);
+  if(apiReady) createPlayer(id); else pendingId = id;
+  try{ history.pushState({w:id}, '', '#watch'); }catch(e){}
+  window.scrollTo(0,0);
+  positionTabs();
+}
+function closeVideo(){
+  savePos();
+  if(player){ try{ player.destroy(); }catch(e){} player = null; }
+  const box = document.querySelector('.player-box'); box.innerHTML = '<div id="player"></div>';
+  cur = null;
+  $('watch').hidden = true; $('setup').hidden = false; $('topbar').hidden = false;
+  renderLib(); updateStart();
+}
+window.addEventListener('popstate', () => { if(cur) closeVideo(); });
+
+function createPlayer(id){
+  pendingId = null;
+  player = new YT.Player('player', {
+    videoId: id,
+    playerVars: {playsinline:1, rel:0, cc_load_policy:0, iv_load_policy:3, modestbranding:1, start: Math.floor(cur?.v.pos || 0)},
+    events: {
+      onReady: () => {
+        try{ const t = player.getVideoData().title; if(t && cur){ cur.v.title = t; persist(); } }catch(e){}
+        player.setPlaybackRate(st.rate);
+      },
+      onStateChange: (e) => { setPlayIcon(e.data === 1); if(e.data === 2) savePos(); if(e.data === 1) $('playerMsg').hidden = true; },
+      onError: (e) => showPlayerError(e.data)
+    }
+  });
+}
+function showPlayerError(code){
+  const msgs = {
+    2: '動画のURLが正しくないようです。URLを確認してください。',
+    5: 'この端末のブラウザでは再生できませんでした。別のブラウザ（SafariやChrome）で試してください。',
+    100: '動画が見つかりません。削除されたか、非公開になっています。',
+    101: 'この動画は投稿者がYouTube以外での再生を禁止しています。別の動画を選んでください。',
+    150: 'この動画は投稿者がYouTube以外での再生を禁止しています。別の動画を選んでください。',
+    153: 'ファイルを直接開いているため再生できません。Netlify DropかGitHub Pagesに置いたURLから開いてください。'
+  };
+  const el = $('playerMsg');
+  el.textContent = (msgs[code] || '動画を再生できませんでした。') + `（エラー${code}）`;
+  el.hidden = false;
+}
+function setPlayIcon(playing){
+  $('playIcon').innerHTML = playing ? '<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>' : '<path d="M7 5l12 7-12 7z"/>';
+  $('playLbl').textContent = playing ? '一時停止' : '再生';
+}
+function savePos(){ if(player && cur && player.getCurrentTime){ try{ cur.v.pos = player.getCurrentTime(); persist(); }catch(e){} } }
+setInterval(savePos, 15000);
+
+const subT = () => player.getCurrentTime() + (cur.v.offset || 0);
+function seekCue(i){
+  if(!player || !cur || i < 0 || i >= cur.v.en.length) return;
+  st.lastStopIdx = -1;
+  player.seekTo(Math.max(0, cur.v.en[i].s - (cur.v.offset||0) + 0.01), true);
+  player.playVideo();
+  setCurrent(i);
+}
+
+/* tick */
+setInterval(() => {
+  if(!player || !cur || typeof player.getCurrentTime !== 'function') return;
+  const t = subT();
+  const en = cur.v.en;
+  let i = findIdx(en, t + 0.05);
+  const playing = player.getPlayerState() === 1;
+  const c = en[st.idx];
+  if(playing && c && st.idx >= 0){
+    if(st.loop && t >= c.e && t < c.e + 2){ player.seekTo(c.s - (cur.v.offset||0) + 0.01, true); return; }
+    if(st.stopEach && t >= c.e - 0.05 && st.lastStopIdx !== st.idx){ st.lastStopIdx = st.idx; player.pauseVideo(); return; }
+  }
+  if(st.loop && st.idx >= 0) i = st.idx;
+  if(i !== st.idx) setCurrent(i);
+  const active = i >= 0 && t <= en[i].e + 0.6;
+  $('capEn').style.opacity = active ? 1 : .35;
+  $('capJa').style.opacity = active ? 1 : .35;
+}, 100);
+
+function setCurrent(i){
+  st.idx = i; st.revealJa = false; st.revealEn = false;
+  renderCaption(i);
+  const list = $('list');
+  list.querySelector('.cue.now')?.classList.remove('now');
+  if(st.tab === 'all'){
+    const li = list.querySelector(`[data-i="${i}"]`);
+    if(li){ li.classList.add('now'); scrollIntoViewIfNeeded(li); }
+  }
+}
+let userScrollUntil = 0;
+window.addEventListener('touchmove', () => { userScrollUntil = Date.now() + 4000; }, {passive:true});
+window.addEventListener('wheel', () => { userScrollUntil = Date.now() + 4000; }, {passive:true});
+function scrollIntoViewIfNeeded(el){
+  if(Date.now() < userScrollUntil) return;
+  const stageH = $('stage').getBoundingClientRect().height + 50;
+  const r = el.getBoundingClientRect();
+  if(r.top < stageH || r.bottom > innerHeight - 40){
+    window.scrollTo({top: window.scrollY + r.top - stageH - 8, behavior:'smooth'});
+  }
+}
+function renderCaption(i){
+  const en = $('capEn'), ja = $('capJa');
+  if(!cur || i < 0){ en.innerHTML = '<span class="cap-empty">再生すると、ここに英語と日本語の字幕が出ます。再生ボタンで動かないときは、動画の画面を直接タップしてください。</span>'; ja.textContent = ''; return; }
+  const text = cur.v.en[i].t;
+  en.innerHTML = text.split(/(\s+)/).map(p => /\S/.test(p) ? `<span class="w">${esc(p)}</span>` : p).join('');
+  ja.textContent = cur.jaPair[i] || (cur.v.ja?.length ? '' : '（日本語字幕なし）');
+  en.classList.toggle('veil', st.hideEn && !st.revealEn);
+  ja.classList.toggle('veil', st.hideJa && !st.revealJa);
+}
+$('capJa').addEventListener('click', () => { if(st.hideJa){ st.revealJa = !st.revealJa; $('capJa').classList.toggle('veil', !st.revealJa); } });
+$('capEn').addEventListener('click', (e) => {
+  if(st.hideEn && !st.revealEn){ st.revealEn = true; $('capEn').classList.remove('veil'); return; }
+  const w = e.target.closest('.w'); if(!w) return;
+  const word = w.textContent.replace(/^[^A-Za-z']+|[^A-Za-z']+$/g,'');
+  if(!word) return;
+  player?.pauseVideo();
+  $('sheetWord').textContent = word;
+  $('lkWeblio').href = 'https://ejje.weblio.jp/content/' + encodeURIComponent(word.toLowerCase());
+  $('lkEijiro').href = 'https://eow.alc.co.jp/search?q=' + encodeURIComponent(word.toLowerCase());
+  $('sheet').hidden = false;
+});
+$('sheetClose').addEventListener('click', () => { $('sheet').hidden = true; });
+
+/* list */
+function isSaved(i){ return store.saved.some(s => s.id === cur.id && Math.abs(s.s - cur.v.en[i].s) < 0.01); }
+function renderList(){
+  if(!cur) return;
+  const en = cur.v.en;
+  const savedHere = store.saved.filter(s => s.id === cur.id);
+  $('cntAll').textContent = en.length;
+  $('cntSaved').textContent = store.saved.length || '';
+  const star = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>';
+  const starO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>';
+  const list = $('list');
+  list.classList.toggle('hide-ja', st.hideJa);
+  if(st.tab === 'all'){
+    list.innerHTML = en.map((c,i) => {
+      const sv = isSaved(i);
+      return `<li class="cue${i===st.idx?' now':''}" data-i="${i}"><span class="ts">${fmt(c.s)}</span><span class="en">${esc(c.t)}</span><button class="star${sv?' on':''}" data-star="${i}" aria-label="保存">${sv?star:starO}</button><span class="ja">${esc(cur.jaPair[i]||'')}</span></li>`;
+    }).join('');
+  } else {
+    const all = [...store.saved].sort((a,b) => b.at - a.at);
+    list.innerHTML = all.length ? all.map((s,k) => {
+      const here = s.id === cur.id;
+      return `<li class="cue" data-saved="${k}"><span class="ts">${fmt(s.s)}</span><span class="en">${esc(s.en)}</span><button class="star on" data-unsave="${s.at}" aria-label="保存を外す">${star}</button><span class="ja">${esc(s.ja||'')}${here?'':`<br><small>別の動画：${esc(s.title||s.id)}</small>`}</span></li>`;
+    }).join('') : '<li class="empty">字幕の★か、上の「保存」で覚えたいフレーズを残せます。</li>';
+    list._saved = all;
+  }
+}
+$('list').addEventListener('click', (e) => {
+  const sb = e.target.closest('[data-star]');
+  if(sb){ toggleSave(+sb.dataset.star); return; }
+  const ub = e.target.closest('[data-unsave]');
+  if(ub){ store.saved = store.saved.filter(s => String(s.at) !== ub.dataset.unsave); persist(); renderList(); return; }
+  const li = e.target.closest('.cue'); if(!li) return;
+  if(li.dataset.i){ userScrollUntil = 0; seekCue(+li.dataset.i); }
+  else if(li.dataset.saved){
+    const s = $('list')._saved[+li.dataset.saved];
+    if(s.id === cur.id){ const i = findIdx(cur.v.en, s.s + 0.01); seekCue(i); }
+    else if(store.videos[s.id]){ closeVideo(); openVideo(s.id); }
+    else toast('この動画の字幕は削除されています');
+  }
+});
+function toggleSave(i){
+  if(!cur || i < 0) return;
+  const c = cur.v.en[i];
+  const at = store.saved.findIndex(s => s.id === cur.id && Math.abs(s.s - c.s) < 0.01);
+  if(at >= 0){ store.saved.splice(at,1); toast('保存を外しました'); }
+  else { store.saved.push({id:cur.id, title:cur.v.title, s:c.s, en:c.t, ja:cur.jaPair[i]||'', at:Date.now()}); toast('フレーズを保存しました'); }
+  persist(); renderList();
+}
+
+/* controls */
+$('prevBtn').addEventListener('click', () => {
+  if(!player || !cur) return;
+  const i = st.idx; const t = subT();
+  if(i >= 0 && t - cur.v.en[i].s > 1.2) seekCue(i); else seekCue(Math.max(0, i-1));
+});
+$('nextBtn').addEventListener('click', () => { if(cur) seekCue(Math.min(cur.v.en.length-1, st.idx+1)); });
+$('playBtn').addEventListener('click', () => {
+  if(!player) return;
+  if(player.getPlayerState() === 1) player.pauseVideo();
+  else {
+    // after an auto-stop, continue into the next line
+    if(st.stopEach && st.lastStopIdx === st.idx && st.idx >= 0 && st.idx < cur.v.en.length-1){ seekCue(st.idx+1); return; }
+    player.playVideo();
+  }
+});
+function toggle(btn, key, after){
+  st[key] = !st[key]; btn.classList.toggle('on', st[key]); btn.setAttribute('aria-pressed', st[key]); after && after();
+}
+$('loopBtn').addEventListener('click', (e) => toggle(e.currentTarget, 'loop', () => toast(st.loop ? 'この文をくり返します' : 'リピートを解除')));
+$('stopEachBtn').addEventListener('click', (e) => toggle(e.currentTarget, 'stopEach'));
+$('hideJaBtn').addEventListener('click', (e) => toggle(e.currentTarget, 'hideJa', () => { renderCaption(st.idx); $('list').classList.toggle('hide-ja', st.hideJa); }));
+$('hideEnBtn').addEventListener('click', (e) => toggle(e.currentTarget, 'hideEn', () => renderCaption(st.idx)));
+$('saveBtn').addEventListener('click', () => { if(st.idx >= 0) toggleSave(st.idx); else toast('再生中の字幕を保存できます'); });
+$('rateBtn').addEventListener('click', () => {
+  st.rate = RATES[(RATES.indexOf(st.rate)+1) % RATES.length];
+  $('rateBtn').textContent = st.rate.toFixed(st.rate % 1 && String(st.rate).length > 3 ? 2 : 1) + '×';
+  player?.setPlaybackRate(st.rate);
+});
+function nudge(d){
+  if(!cur) return;
+  cur.v.offset = Math.round(((cur.v.offset||0) + d) * 10) / 10; persist();
+  $('offOut').textContent = (cur.v.offset >= 0 ? '+' : '') + cur.v.offset.toFixed(1) + 's';
+}
+$('offPlus').addEventListener('click', () => nudge(0.5));
+$('offMinus').addEventListener('click', () => nudge(-0.5));
+$('backBtn').addEventListener('click', () => history.back());
+
+/* tabs */
+$('tabs').addEventListener('click', (e) => {
+  const t = e.target.closest('.tab'); if(!t) return;
+  st.tab = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b === t));
+  renderList();
+});
+function positionTabs(){ requestAnimationFrame(() => { $('tabs').style.top = $('stage').getBoundingClientRect().height + 'px'; }); }
+window.addEventListener('resize', () => { if(cur) positionTabs(); });
+
+/* back to setup from watch (top bar hidden while watching) */
+const back = document.createElement('button');
+back.className = 'chip'; back.textContent = '← 動画一覧';
+back.addEventListener('click', () => history.back());
+document.querySelector('.subbar').prepend(back);
+
+/* boot */
+renderSlots(); renderLib();
+if(location.protocol === 'file:') $('fileWarn').hidden = false;
+if(location.hash === '#watch') try{ history.replaceState(null,'',location.pathname); }catch(e){}
+})();
+</script>
+</body>
+</html>
