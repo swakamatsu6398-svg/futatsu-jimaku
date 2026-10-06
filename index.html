@@ -72,6 +72,22 @@ details.paste textarea{width:100%;min-height:120px;margin-top:8px;border:1px sol
 .err{color:#c23b3b;font-size:13px;margin:0}
 .howto ol{margin:0;padding-left:1.3em;font-size:14px;display:grid;gap:4px}
 .howto code{font-family:var(--f-mono);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+.results{display:grid;gap:6px}
+.results:empty{display:none}
+.res{display:flex;gap:10px;align-items:flex-start;background:none;border:1px solid var(--line);border-radius:10px;padding:6px;text-align:left;width:100%}
+.res img{width:120px;aspect-ratio:16/9;object-fit:cover;border-radius:6px;flex:none;background:var(--line)}
+.res span{min-width:0;display:grid;gap:2px}
+.res b{font-size:13px;line-height:1.4;font-weight:500;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.res small{font-size:11px;color:var(--muted)}
+.more{justify-self:center}
+.picked{display:flex;gap:10px;align-items:center;border:1px solid var(--accent);background:var(--accent-soft);border-radius:10px;padding:8px}
+.picked img{width:96px;aspect-ratio:16/9;object-fit:cover;border-radius:6px;flex:none}
+.picked span{min-width:0;font-size:13px;line-height:1.4}
+.picked small{display:block;color:var(--muted);font-size:11px}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 .lib{display:grid;gap:8px}
 .lib-item{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px;text-align:left;width:100%}
 .lib-item img{width:96px;aspect-ratio:16/9;object-fit:cover;border-radius:8px;flex:none;background:var(--line)}
@@ -151,11 +167,28 @@ details.paste textarea{width:100%;min-height:120px;margin-top:8px;border:1px sol
   </div>
 
   <section class="step">
-    <h2><span class="n">1</span>動画のURL</h2>
+    <h2><span class="n">1</span>動画を選ぶ</h2>
+    <form class="field" id="searchForm" role="search">
+      <input id="q" type="search" enterkeyhint="search" placeholder="キーワードで検索（例：TED-Ed history）" autocomplete="off">
+      <button class="btn" type="submit">検索</button>
+    </form>
+    <label class="check"><input type="checkbox" id="ccOnly" checked> 字幕付きの動画だけ</label>
+    <p class="err" id="searchErr" hidden></p>
+    <div class="results" id="results"></div>
+    <div class="picked" id="picked" hidden></div>
+    <div class="or"><span>またはURLを貼る</span></div>
     <div class="field">
       <input id="url" type="url" inputmode="url" placeholder="https://youtu.be/…" autocomplete="off">
     </div>
     <p class="hint">YouTubeアプリの「共有」→「コピー」で取れるURLをそのまま貼れます。</p>
+    <details class="paste" id="keyBox">
+      <summary id="keySummary">アプリ内で検索結果を表示する（APIキーの登録）</summary>
+      <p class="hint" style="margin-top:8px">キーが未登録のときは、検索するとYouTubeの検索結果ページが開きます。Googleの無料のAPIキーを登録すると、アプリの中に結果が並びます。キーはこの端末の中だけに保存されます。</p>
+      <div class="field" style="margin-top:8px">
+        <input id="apiKey" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false">
+        <button class="ghost" type="button" id="keySave">保存</button>
+      </div>
+    </details>
   </section>
 
   <section class="step">
@@ -396,6 +429,95 @@ $('startBtn').addEventListener('click', () => {
   draft.en = draft.ja = null; renderSlots();
   openVideo(id);
 });
+
+/* ---------- search ---------- */
+const KEY_API = 'futatsu-jimaku:apikey';
+const getKey = () => { try{ return localStorage.getItem(KEY_API) || ''; }catch(e){ return ''; } };
+function renderKeyState(){
+  const k = getKey();
+  $('apiKey').value = k;
+  $('keySummary').textContent = k ? 'APIキー登録済み（アプリ内で検索）' : 'アプリ内で検索結果を表示する（APIキーの登録）';
+}
+$('keySave').addEventListener('click', () => {
+  try{ localStorage.setItem(KEY_API, $('apiKey').value.trim()); }catch(e){}
+  renderKeyState(); toast($('apiKey').value.trim() ? 'APIキーを保存しました' : 'APIキーを削除しました');
+});
+const decode = (s) => { const t = document.createElement('textarea'); t.innerHTML = s; return t.value; };
+let nextPage = '', lastQ = '';
+function searchErr(m){ const e = $('searchErr'); e.textContent = m; e.hidden = !m; }
+
+$('searchForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const q = $('q').value.trim(); if(!q) return;
+  searchErr('');
+  const key = getKey();
+  if(!key){
+    const sp = $('ccOnly').checked ? '&sp=' + encodeURIComponent('EgIoAQ==') : '';
+    const a = document.createElement('a');
+    a.href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q) + sp;
+    a.target = '_blank'; a.rel = 'noopener'; a.click();
+    toast('YouTubeで検索結果を開きました。動画のURLをコピーして下に貼ってください');
+    return;
+  }
+  lastQ = q; nextPage = '';
+  $('results').innerHTML = '<p class="hint">検索中…</p>';
+  await runSearch(false);
+});
+async function runSearch(append){
+  const p = new URLSearchParams({part:'snippet', type:'video', maxResults:'15', q:lastQ, videoEmbeddable:'true', relevanceLanguage:'en', key:getKey()});
+  if($('ccOnly').checked) p.set('videoCaption','closedCaption');
+  if(nextPage) p.set('pageToken', nextPage);
+  try{
+    const r = await fetch('https://www.googleapis.com/youtube/v3/search?' + p);
+    const data = await r.json();
+    if(!r.ok){
+      const reason = data?.error?.errors?.[0]?.reason || '';
+      const msg = reason === 'quotaExceeded' ? '今日の検索回数の上限に達しました。明日になると回復します（1日約100回まで）。'
+        : /keyInvalid|badRequest/.test(reason) || r.status === 400 ? 'APIキーが正しくないようです。キーを確認してください。'
+        : r.status === 403 ? 'APIキーが使えませんでした。YouTube Data API v3が有効になっているか、キーの制限設定を確認してください。'
+        : '検索できませんでした。';
+      searchErr(msg + (reason ? `（${reason}）` : '')); if(!append) $('results').innerHTML = ''; return;
+    }
+    nextPage = data.nextPageToken || '';
+    const items = (data.items || []).filter(it => it.id?.videoId);
+    const html = items.map(it => {
+      const s = it.snippet, id = it.id.videoId, title = decode(s.title), ch = decode(s.channelTitle);
+      return `<button class="res" type="button" data-pick="${id}" data-title="${esc(title)}" data-ch="${esc(ch)}">
+        <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy">
+        <span><b>${esc(title)}</b><small>${esc(ch)}</small></span></button>`;
+    }).join('');
+    $('results').querySelector('.more')?.remove();
+    $('results').querySelector('p.hint')?.remove();
+    if(append) $('results').insertAdjacentHTML('beforeend', html); else $('results').innerHTML = html || '<p class="hint">見つかりませんでした。別のキーワードで試してください。</p>';
+    if(nextPage && items.length) $('results').insertAdjacentHTML('beforeend', '<button class="ghost more" type="button" id="moreBtn">さらに表示</button>');
+  }catch(e){
+    searchErr('通信できませんでした。電波の状態を確認してください。'); if(!append) $('results').innerHTML = '';
+  }
+}
+$('results').addEventListener('click', (e) => {
+  if(e.target.id === 'moreBtn'){ e.target.textContent = '読み込み中…'; runSearch(true); return; }
+  const b = e.target.closest('[data-pick]'); if(!b) return;
+  pickVideo(b.dataset.pick, b.dataset.title, b.dataset.ch);
+});
+function pickVideo(id, title, ch){
+  $('url').value = 'https://youtu.be/' + id;
+  $('results').innerHTML = '';
+  const p = $('picked');
+  p.innerHTML = `<img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="">
+    <span><b>${esc(title)}</b><small>${esc(ch||'')}</small>
+    <span class="row" style="margin-top:6px"><button class="ghost" type="button" id="copyUrl">URLをコピー</button>
+    <a class="ghost" style="text-decoration:none" href="https://notegpt.io/ja/youtube-subtitle-downloader" target="_blank" rel="noopener">字幕を取得</a></span></span>`;
+  p.dataset.id = id; p.hidden = false;
+  updateStart();
+  toast(store.videos[id] ? '保存済みの字幕があります' : '次に字幕ファイルを用意してください');
+}
+$('picked').addEventListener('click', async (e) => {
+  if(e.target.id !== 'copyUrl') return;
+  const u = $('url').value;
+  try{ await navigator.clipboard.writeText(u); toast('URLをコピーしました。字幕サイトに貼ってください'); }
+  catch(err){ $('url').focus(); $('url').select(); toast('URLを選択しました。コピーしてください'); }
+});
+$('url').addEventListener('input', () => { if(videoId($('url').value) !== $('picked').dataset.id) $('picked').hidden = true; });
 
 function renderLib(){
   const ids = Object.keys(store.videos).sort((a,b) => store.videos[b].updated - store.videos[a].updated);
@@ -664,7 +786,7 @@ back.addEventListener('click', () => history.back());
 document.querySelector('.subbar').prepend(back);
 
 /* boot */
-renderSlots(); renderLib();
+renderSlots(); renderLib(); renderKeyState();
 if(location.protocol === 'file:') $('fileWarn').hidden = false;
 if(location.hash === '#watch') try{ history.replaceState(null,'',location.pathname); }catch(e){}
 })();
